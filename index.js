@@ -10,6 +10,7 @@ import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
 import dotenv from "dotenv";
+import { Redis } from "@upstash/redis";
 const don = "./test/data/don.pdf";
 
 dotenv.config(); // Load environment variables
@@ -17,7 +18,27 @@ dotenv.config(); // Load environment variables
 const app = express();
 app.use(express.json());
 
+// Initializing the Redish Client token can be created n ustash website..
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
 app.post("/", async (req, res) => {
+  const { context, question } = req.body;
+  console.log("Context:", req.body.context);
+
+  //Checking if response is catched if already catched then response with the catched answer..
+  const cacheKey = `response:${context}:${question}`;
+  const cachedResponse = await redis.get(cacheKey);
+
+  if (cachedResponse) {
+    return res.json({
+      message: cachedResponse,
+    });
+  }
+
+  // Generating the response from Mistral Server
   const llm = new ChatMistralAI({
     model: "mistral-large-latest",
     temperature: 0,
@@ -49,7 +70,7 @@ app.post("/", async (req, res) => {
 
   // Retrieve
   const retriever = vectorStore.asRetriever({ k: 6, searchType: "similarity" });
-  const retrievedDocs = await retriever.invoke(req.body.context);
+  const retrievedDocs = await retriever.invoke(context);
 
   // Customizing prompt
   const template = `Use the following pieces of context to answer the question at the end.
@@ -71,12 +92,13 @@ app.post("/", async (req, res) => {
     outputParser: new StringOutputParser(),
   });
 
-  const context = await retriever.invoke(`${req.body.context}`);
-
   const response = await ragChain.invoke({
-    question: req.body.question,
-    context,
+    question: question,
+    context: retrievedDocs,
   });
+
+  // Caching the response for future requests;
+  await redis.set(cacheKey, response);
 
   res.json({
     message: response,
@@ -84,5 +106,5 @@ app.post("/", async (req, res) => {
 });
 
 app.listen(3000, () => {
-  console.log("Listening on port 3000");
+  console.log("Listening on port http://localhost:3000");
 });
