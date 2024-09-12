@@ -1,5 +1,5 @@
 # RAG Based Chatbot
-A simple chatbot API that uses the RAG (Retriever, Answerer, Generator) architecture to answer questions based on a given context.
+Building a production ready simple chatbot API that uses the RAG (Retriever, Answerer, Generator) architecture to answer questions based on a given context.
 
 ## Table of Contents
 
